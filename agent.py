@@ -122,10 +122,10 @@ class Agent:
             state_new = self.get_state()
 
             # Train short memory
-            self.train_short_memory(state_old, final_move, reward, state_new, done)
+            self.train_short_memory(state_old, final_move, reward, state_new, game_over)
 
             # Save the event in memory
-            self.remember(state_old, final_move, reward, state_new, done)
+            self.remember(state_old, final_move, reward, state_new, game_over)
             
             # Train long memory and plot results in case of game over
             # or game successfully concluded 
