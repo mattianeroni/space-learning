@@ -4,13 +4,10 @@ import numpy as np
 import collections
 from datetime import datetime 
 
-import game 
 from model import Linear_QNet, QTrainer
 from utils import plot
 
-#MAX_MEMORY = 100_000
-#BATCH_SIZE = 1000
-#LR = 0.001
+
 
 class Agent:
 
@@ -32,9 +29,6 @@ class Agent:
         self.memory = collections.deque(maxlen=MAX_MEMORY)
         self.model = model 
         self.trainer = trainer
-        
-        #self.model = Linear_QNet(11, 256, 3)
-        #self.trainer = QTrainer(self.model, lr=0.001, gamma=0.9) # gamma: discount rate
 
 
     def get_state(self):
@@ -142,7 +136,7 @@ class Agent:
                 
                 if score > record:
                     record = score
-                    self.model.save()
+                    self.model.save('./model/model.pth')
 
                 _time = datetime.now().strftime("%H:%M:%S.%f")
                 print(f"[INFO][{_time}] game: {self.n_games} - score: {score} - record: {record}")

@@ -64,7 +64,7 @@ class Game:
 
     def reset(self):
         """ Initialize the game """
-        #self.direction = np.array([0, 1, 0, 0]) # (UP, DOWN, LEFT, RIGHT)
+        self.last_action = np.array([0, 1, 0, 0]) # (UP, DOWN, LEFT, RIGHT)
         self.cpos = (0, 0)
         self.slam = np.full(self.grid_size, -1)
         view = self.view
@@ -196,6 +196,8 @@ class Game:
 
 
     def _move(self, action):
+        self.last_action = action
+
         # Update robot position
         if action[3] == 1:   # RIGHT
             self.cpos = (self.cpos[0] + 1, self.cpos[1])
