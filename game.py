@@ -2,20 +2,12 @@ import pygame
 import random
 import enum
 import collections 
+import torch
 import numpy as np
 
 pygame.init()
 font = pygame.font.Font('arial.ttf', 25)
 
-"""
-class Direction(enum.Enum):
-    UP = 1
-    LEFT = 2
-    RIGHT = 3
-    DOWN = 4
-
-Point = collections.namedtuple('Point', 'x, y')
-"""
 
 # RGB colors 
 WHITE = (255, 255, 255)
@@ -64,12 +56,11 @@ class Game:
 
     def reset(self):
         """ Initialize the game """
-        self.last_action = np.array([0, 1, 0, 0]) # (UP, DOWN, LEFT, RIGHT)
+        self.last_action = torch.tensor([0, 1, 0, 0], dtype=torch.int8) # (UP, DOWN, LEFT, RIGHT)
         self.cpos = (0, 0)
-        self.slam = np.full(self.grid_size, -1)
+        self.slam = torch.Tensor(self.grid_size[0], self.grid_size[1]).fill_(-1)
         view = self.view
         self.slam[self.cpos] = 0
-        #self.slam[self.cpos.x - view:self.cpos.x + view + 1, self.cpos.y - view:self.cpos.y + view + 1] = 0
         self.score = 0
         self._place_obstacles()
         self.frame_iteration = 0
@@ -84,14 +75,13 @@ class Game:
             y = random.randint(0, Y - 1)
             if abs(x - cpos[0]) > view and abs(y - cpos[1]) > view:
                 slam[x, y] = 1
-                #obstacles.append(Point(x, y))
 
 
     def human_play (self):
         """ A user is playing """
         while True:
             # null action
-            action = np.zeros(4)
+            action = torch.zeros(4)
             
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -100,13 +90,13 @@ class Game:
 
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_LEFT:
-                        action = np.array([0, 0, 1, 0])
+                        action = torch.tensor([0, 0, 1, 0])
                     elif event.key == pygame.K_RIGHT:
-                        action = np.array([0, 0, 0, 1])
+                        action = torch.tensor([0, 0, 0, 1])
                     elif event.key == pygame.K_UP:
-                        action = np.array([1, 0, 0, 0])
+                        action = torch.tensor([1, 0, 0, 0])
                     elif event.key == pygame.K_DOWN:
-                        action = np.array([0, 1, 0, 0])
+                        action = torch.tensor([0, 1, 0, 0])
 
             _, game_over, score = self.play_step(action)
             if game_over:
@@ -114,6 +104,7 @@ class Game:
 
         pygame.quit()
         print(f"Final Score: {score}")
+
 
     def play_step(self, action):
         """ Play a game step as suggested by the network """
@@ -129,29 +120,32 @@ class Game:
                 quit()
         
         # 2. Move
+        #print(self.slam)
         self._move(action)
         
         # 3. Punish if the robot goes over already visited positions or against obstacles
-        reward, game_over = 0, False
-        if slam[cpos] == 0:
-            reward = -1
-        elif slam[cpos] == -1:
-            reward = 10
-            self.score += 1
-        elif slam[cpos] == 1 or self.out_of_border() or self.frame_iteration > self.slam.size:
-            game_over = True
+        reward = 0
+        
+        if slam[cpos] == 1 or self.out_of_border() or self.frame_iteration > 2000:
+            return torch.tensor(-100), True, self.score
+
+        elif slam[cpos] == 0:
             reward = -10
-            return reward, game_over, self.score
+        
+        elif slam[cpos] == -1:
+            reward = np.where(self.slam.numpy() == 0, 1, 0).sum()
+            self.score += 1
+        
 
         # 4. Update SLAM 
-        slam[cpos] = 0
+        self.slam[cpos] = 0
 
         # 5. update ui and clock
         self._render()
         self.clock.tick(self.speed)
 
         # 6. return game over and score
-        return reward, game_over, self.score
+        return torch.tensor(reward), False, self.score
 
 
     def out_of_border(self):

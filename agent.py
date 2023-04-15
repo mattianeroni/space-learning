@@ -4,7 +4,6 @@ import numpy as np
 import collections
 from datetime import datetime 
 
-from model import Linear_QNet, QTrainer
 from utils import plot
 
 
@@ -26,7 +25,9 @@ class Agent:
         """
         self.n_games = 0
         self.epsilon = 0
-        self.memory = collections.deque(maxlen=MAX_MEMORY)
+        self.memory = collections.deque(maxlen=max_memory)
+        self.batch_size = batch_size
+        self.game = game
         self.model = model 
         self.trainer = trainer
 
@@ -35,35 +36,29 @@ class Agent:
         game = self.game 
         slam, last_action, cpos = game.slam, game.last_action, game.cpos 
         x, y = cpos
+        X, Y = slam.shape
+        s0, s1, s2, s3 = 1,1,1,1
+        if x + 1 >= 0 and x + 1 < X and y >= 0 and y < Y:
+            s0 = slam[x + 1, y]
+        if x - 1 >= 0 and x - 1 < X and y >= 0 and y < Y:
+            s1 = slam[x - 1, y]
+        if x >= 0 and x < X and y + 1 >= 0 and y + 1 < Y:
+            s2 = slam[x, y + 1]
+        if x >= 0 and x < X and y - 1 >= 0 and y - 1 < Y:
+            s3 = slam[x, y - 1]
+        return game.slam.unsqueeze(0), torch.tensor([x, y, 
+            s0, s1, s2, s3,
+            last_action[0], last_action[1], last_action[2], last_action[3]], dtype=torch.float)
 
-        state = (
-            # Current position 
-            x, 
-            y,
 
-            # Surrounding positions
-            slam[x + 1, y],
-            slam[x - 1, y],
-            slam[x, y + 1],
-            slam[x, y - 1]
-            
-            # Current direction given by last action
-            last_action[0],
-            last_action[1],
-            last_action[2],
-            last_action[3],
-        )
-
-        return np.array(state, dtype=np.int32)
-
-    def remember(self, state, action, reward, next_state, done):
+    def remember(self, grid, state, action, reward, next_grid, next_state, done):
         """ 
         Store an event in memory.
 
         NOTE: Memory is a deque, when it is longer than its capacity, the
         first stored events are automatically trashed.
         """
-        self.memory.append((state, action, reward, next_state, done)) 
+        self.memory.append((grid, state, action, reward, next_grid, next_state, done)) 
         
 
     def train_long_memory(self):
@@ -73,16 +68,23 @@ class Agent:
         else:
             mini_sample = self.memory
 
-        states, actions, rewards, next_states, dones = zip(*mini_sample)
-        self.trainer.train_step(states, actions, rewards, next_states, dones)
+        grid, state, action, reward, next_grid, next_state, done = zip(*mini_sample)
+        grid = torch.stack(grid)
+        state = torch.stack(state)
+        action = torch.stack(action)
+        reward = torch.stack(reward)
+        next_grid = torch.stack(next_grid)
+        next_state = torch.stack(next_state)
+        #print(grid.shape, state.shape)
+        self.trainer.train_step(grid, state, action, reward, next_grid, next_state, done)
 
 
-    def train_short_memory(self, state, action, reward, next_state, done):
+    def train_short_memory(self, grid, state, action, reward, next_grid, next_state, done):
         """ Train the model on a single event """
-        self.trainer.train_step(state, action, reward, next_state, done)
+        self.trainer.train_step(grid, state, action, reward, next_grid, next_state, done)
 
 
-    def get_action(self, state):
+    def get_action(self, grid, x):
         """
         Givent a state, this method returns the next action computed by the agent.
         There is a trade-off between exploration and exploitation allowing some 
@@ -95,12 +97,11 @@ class Agent:
             move = random.randint(0, 3)
             final_move[move] = 1
         else:
-            state0 = torch.tensor(state, dtype=torch.float)
-            prediction = self.model(state0)
+            prediction = self.model(grid, x)
             move = torch.argmax(prediction).item()
             final_move[move] = 1
 
-        return np.array(final_move, dtype=np.int32)
+        return torch.tensor(final_move, dtype=torch.int8)
 
     
     def train (self):
@@ -112,25 +113,25 @@ class Agent:
 
         while True:
             # Get current state
-            state_old = self.get_state()
+            grid_old, state_old = self.get_state()
 
             # Get the move suggested by the model (with an eventual randomness)
-            final_move = self.get_action(state_old)
+            final_move = self.get_action(grid_old, state_old)
 
             # Perform move and get new state
-            reward, game_over, score = game.play_step(final_move)
-            state_new = self.get_state()
+            reward, game_over, score = self.game.play_step(final_move)
+            grid_new, state_new = self.get_state()
 
             # Train short memory
-            self.train_short_memory(state_old, final_move, reward, state_new, game_over)
+            self.train_short_memory(grid_old, state_old, final_move, reward, grid_new, state_new, game_over)
 
             # Save the event in memory
-            self.remember(state_old, final_move, reward, state_new, game_over)
+            self.remember(grid_old, state_old, final_move, reward, grid_new, state_new, game_over)
             
             # Train long memory and plot results in case of game over
             # or game successfully concluded 
             if game_over:
-                game.reset()
+                self.game.reset()
                 self.n_games += 1
                 self.train_long_memory()
                 
