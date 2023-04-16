@@ -17,12 +17,13 @@ class Agent:
         self.epsilon = 0 # randomness
         self.gamma = 0.9 # discount rate
         self.memory = deque(maxlen=MAX_MEMORY) # popleft()
-        self.model = Linear_QNet(11, 256, 3)
+        self.model = Linear_QNet(13, 256, 3)
         self.trainer = QTrainer(self.model, lr=LR, gamma=self.gamma)
 
 
     def get_state(self, game):
         x, y = game.robot
+        grid = game.grid
 
         point_l = (x - 1, y)
         point_r = (x + 1, y)
@@ -33,6 +34,15 @@ class Agent:
         dir_r = game.direction == Direction.RIGHT
         dir_u = game.direction == Direction.UP
         dir_d = game.direction == Direction.DOWN
+
+        # Find position on grid of the closest frontier
+        Xs, Ys = torch.where(grid == -1)
+        exist_frontier = False 
+        if len(Xs) > 0:
+            exist_frontier = True
+            pos = torch.argmin(torch.sqrt( (Xs - x)**2 + (Ys - y)**2 ))
+            x_frontier = Xs[pos]
+            y_frontier = Ys[pos]
 
         state = [
             # Danger straight
@@ -63,7 +73,11 @@ class Agent:
             game.is_unknown(point_l),  # unknown left
             game.is_unknown(point_r),  # unknown right
             game.is_unknown(point_u),  # unknown up
-            game.is_unknown(point_d)   # unknown down
+            game.is_unknown(point_d),  # unknown down
+
+            # Closest frontier position
+            x_frontier and exist_frontier,
+            y_frontier and exist_frontier,
         ]
 
         return np.array(state, dtype=np.int8)

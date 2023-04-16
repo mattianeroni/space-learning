@@ -86,7 +86,7 @@ class Game:
             self.score += 1
             reward = 10
         elif self.grid[x, y] == 0:
-            reward = 0
+            reward = -1
         
         # 5. update ui and clock
         self._update_ui()
